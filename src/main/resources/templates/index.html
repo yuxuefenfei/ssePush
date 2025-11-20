@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Spring Boot SSE 测试</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            margin: 5px;
+            padding: 8px 15px;
+        }
+
+        #messages {
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #eee;
+            padding: 10px;
+        }
+
+        .message {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+<h1>Spring Boot SSE 测试客户端</h1>
+
+<div class="section">
+    <h3>1. 连接 SSE</h3>
+    <label>客户端ID: <input id="clientId" type="text" value="my-test-client"></label>
+    <button onclick="connectSSE()">连接</button>
+    <button onclick="disconnectSSE()">断开</button>
+</div>
+
+<div class="section">
+    <h3>2. 控制数据流</h3>
+    <button onclick="startTimeStream()">开始时间流</button>
+    <button onclick="sendBroadcast()">发送广播</button>
+    <label for="broadcastMessage">广播内容：
+        <input id="broadcastMessage" placeholder="输入广播内容" type="text" value="大家好！">
+    </label>
+
+</div>
+
+<div class="section">
+    <h3>3. 消息日志</h3>
+    <div id="messages"></div>
+</div>
+
+<script>
+    let eventSource = null;
+    const clientIdInput = document.getElementById('clientId');
+    const messagesDiv = document.getElementById('messages');
+
+    function logMessage(message, type = 'info') {
+        const msgElement = document.createElement('div');
+        msgElement.className = `message ${type}`;
+        msgElement.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        messagesDiv.appendChild(msgElement);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function connectSSE() {
+        const clientId = clientIdInput.value;
+        if (!clientId) {
+            alert('请输入客户端ID');
+            return;
+        }
+
+        // 如果已存在连接，先关闭
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        // 创建新的 EventSource 连接
+        eventSource = new EventSource(`/sse/connect?clientId=${encodeURIComponent(clientId)}`);
+
+        // 监听默认消息（没有指定 event 的消息）
+        eventSource.onmessage = function (event) {
+            logMessage(`[消息] ${event.data}`);
+        };
+
+        // 监听特定事件类型的消息
+        eventSource.addEventListener('connect', function (event) {
+            logMessage(`[连接事件] ${event.data}`, 'success');
+        });
+
+        eventSource.addEventListener('time', function (event) {
+            logMessage(`[时间事件] ${event.data}`, 'time');
+        });
+
+        eventSource.addEventListener('broadcast', function (event) {
+            logMessage(`[广播事件] ${event.data}`, 'broadcast');
+        });
+
+        eventSource.onerror = function (event) {
+            logMessage(`[错误] 连接发生错误`, 'error');
+            console.error('SSE Error:', event);
+        };
+
+        logMessage(`开始连接到 SSE...`, 'info');
+    }
+
+    function disconnectSSE() {
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+            logMessage('连接已手动关闭', 'info');
+        }
+    }
+
+    function startTimeStream() {
+        const clientId = clientIdInput.value;
+        fetch(`/sse/start-time-stream?clientId=${encodeURIComponent(clientId)}`, {
+            method: 'POST'
+        })
+            .then(response => response.text())
+            .then(data => {
+                logMessage(`服务器响应: ${data}`, 'info');
+            })
+            .catch(error => {
+                logMessage(`请求失败: ${error}`, 'error');
+            });
+    }
+
+    function sendBroadcast() {
+        const message = document.getElementById('broadcastMessage').value;
+        fetch(`/sse/broadcast?message=${encodeURIComponent(message)}`, {
+            method: 'POST'
+        })
+            .then(response => response.text())
+            .then(data => {
+                logMessage(`广播响应: ${data}`, 'info');
+            })
+            .catch(error => {
+                logMessage(`广播失败: ${error}`, 'error');
+            });
+    }
+
+    // 页面加载时自动连接（可选）
+    // window.onload = connectSSE;
+</script>
+</body>
+</html>
